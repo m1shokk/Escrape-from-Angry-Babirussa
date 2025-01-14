@@ -1,0 +1,20 @@
+{
+    "Русский": {
+        "title": "Настройки",
+        "sound": "Звук",
+        "language": "Язык",
+        "back": "Назад"
+    },
+    "English": {
+        "title": "Settings",
+        "sound": "Sound",
+        "language": "Language",
+        "back": "Back"
+    },
+    "Français": {
+        "title": "Paramètres",
+        "sound": "Son",
+        "language": "Langue",
+        "back": "Retour"
+    }
+}
