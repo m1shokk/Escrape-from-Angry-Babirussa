@@ -1,0 +1,20 @@
+{
+    "Русский": {
+        "title": "Escape from AB",
+        "play": "Играть",
+        "settings": "Настройки",
+        "exit": "Выход"
+    },
+    "English": {
+        "title": "Escape from AB",
+        "play": "Play",
+        "settings": "Settings",
+        "exit": "Exit"
+    },
+    "Français": {
+        "title": "Escape from AB",
+        "play": "Jouer",
+        "settings": "Paramètres",
+        "exit": "Quitter"
+    }
+}
