@@ -11,7 +11,7 @@ screen = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("Escape from AB")
 
 # Загрузка изображения фона
-image_folder = "images/bg"
+image_folder = "assets/bg"
 image_path = os.path.join(image_folder, "road.jpg")
 background_image = pygame.image.load(image_path)
 
