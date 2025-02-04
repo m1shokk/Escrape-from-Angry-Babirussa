@@ -1,7 +1,10 @@
 import pygame
 import os
 import sys
+import random
 from settings import open_settings
+from music_manager import music_manager
+from game_over import game_over
 
 # Инициализация Pygame
 pygame.init()
@@ -29,6 +32,7 @@ player_path = "./assets/animations/player"
 babirussa_path = "./assets/animations/babirussa"
 background_path = "./assets/bg_game"
 blocks_path = "./assets/blocks"
+items_path = "./assets/items"
 
 # Загрузка фона
 background_image = pygame.image.load(os.path.join(background_path, "Bg_1.jpg"))
@@ -57,9 +61,16 @@ babirussa_run_images = [
 ]
 babirussa_run_images = [pygame.transform.scale(img, (150, 100)) for img in babirussa_run_images]
 
-# Загрузка блока
+# Загрузка блока и комара
 stone_image = pygame.image.load(os.path.join(blocks_path, "stone.png"))
 stone_image = pygame.transform.scale(stone_image, (100, 100))  # Changed to square 100x100
+
+mosquito_image = pygame.image.load(os.path.join(blocks_path, "Mustico.png"))
+mosquito_image = pygame.transform.scale(mosquito_image, (50, 50))  # Маленький размер для комара
+
+# Загрузка монеты
+coin_image = pygame.image.load(os.path.join(items_path, "bitcoin.png"))
+coin_image = pygame.transform.scale(coin_image, (40, 40))
 
 # Переменные для игры
 background_x = 0
@@ -90,10 +101,34 @@ babirussa_jump_velocity = 0
 babirussa_is_jumping = False
 
 # Блоки
-stone_x = WIDTH  # Start from right edge
-stone_y = 400  # Adjusted to ground level
-stone_spawned = False
+MAX_STONES = 3
+stones = []  # Список для хранения камней [{x, y, speed, size}, ...]
+last_stone_spawn = 0
+min_spawn_interval = 8000  # Минимальный интервал между спавнами в миллисекундах
 stone_speed = 5
+
+# Комары
+MAX_MOSQUITOS = 2
+mosquitos = []  # Список для хранения комаров [{x, y, speed}, ...]
+last_mosquito_spawn = 0
+min_mosquito_spawn_interval = 6000  # Интервал между спавнами комаров
+mosquito_speed = 8  # Комары быстрее камней
+MOSQUITO_Y_HIGH = 310  # Уровень головы стоящего игрока
+MOSQUITO_Y_LOW = 430  # Уровень ног игрока
+
+# Монеты
+MAX_COINS = 4
+coins = []  # Список для хранения монет [{x, y, speed}, ...]
+last_coin_spawn = 0
+min_coin_spawn_interval = 2000  # Интервал между спавнами монет
+coin_speed = 5
+COIN_Y_LEVELS = [430, 310, 200]  # Уровни появления монет (земля, голова, выше головы)
+
+# Размеры камней
+STONE_SIZES = [(100, 100), (80, 80), (60, 60)]  # Разные размеры камней
+stone_images = {
+    size: pygame.transform.scale(stone_image, size) for size in STONE_SIZES
+}
 
 # Шрифты
 font = pygame.font.Font(None, 40)
@@ -161,37 +196,169 @@ def handle_pause_menu_click(pos):
         open_settings()
     elif menu_button.collidepoint(x, y):
         try:
-            import menu
-            menu.main()
-        except ImportError:
-            print("Menu module not found")
+            pygame.quit()
+            os.system('python menu.py')
+            sys.exit()
+        except Exception as e:
+            print(f"Error launching menu: {e}")
     elif exit_button.collidepoint(x, y):
         pygame.quit()
         sys.exit()
 
 def draw_blocks():
     """Отрисовка блоков."""
-    if stone_spawned:
-        screen.blit(stone_image, (stone_x, stone_y))
+    for stone in stones:
+        screen.blit(stone_images[stone['size']], (stone['x'], stone['y']))
+    for mosquito in mosquitos:
+        screen.blit(mosquito_image, (mosquito['x'], mosquito['y']))
+    for coin in coins:
+        screen.blit(coin_image, (coin['x'], coin['y']))
 
-def check_collision(x, y, block_x, block_y):
+def check_collision(x, y, block_x, block_y, block_size):
     """Проверка столкновения с блоком"""
     player_rect = pygame.Rect(x, y, 100, 100)
-    block_rect = pygame.Rect(block_x, block_y, 100, 100)
+    block_rect = pygame.Rect(block_x, block_y, block_size[0], block_size[1])
     return player_rect.colliderect(block_rect)
 
-def check_platform_collision(x, y, block_x, block_y):
+def check_mosquito_collision(x, y, mosquito_x, mosquito_y):
+    """Проверка столкновения с комаром"""
+    player_rect = pygame.Rect(x, y, PLAYER_NORMAL_WIDTH, PLAYER_NORMAL_HEIGHT if not is_crouching else PLAYER_CROUCH_HEIGHT)
+    mosquito_rect = pygame.Rect(mosquito_x, mosquito_y, 50, 50)
+    return player_rect.colliderect(mosquito_rect)
+
+def check_coin_collision(x, y, coin_x, coin_y):
+    """Проверка столкновения с монетой"""
+    player_rect = pygame.Rect(x, y, PLAYER_NORMAL_WIDTH, PLAYER_NORMAL_HEIGHT if not is_crouching else PLAYER_CROUCH_HEIGHT)
+    coin_rect = pygame.Rect(coin_x, coin_y, 40, 40)
+    return player_rect.colliderect(coin_rect)
+
+def check_platform_collision(x, y, block_x, block_y, block_size):
     """Проверка приземления на платформу"""
     player_feet = pygame.Rect(x + 25, y + 90, 50, 10)  # Узкая область под ногами игрока
-    platform_top = pygame.Rect(block_x, block_y, 100, 10)  # Верхняя часть блока
+    platform_top = pygame.Rect(block_x, block_y, block_size[0], 10)  # Верхняя часть блока
     return player_feet.colliderect(platform_top)
 
+def spawn_stones(current_time, elapsed_time):
+    """Спавн камней с учетом времени и интервалов"""
+    global last_stone_spawn
+    
+    # Не спавним камни до 10 секунд игры
+    if elapsed_time < 10:
+        return
+        
+    # Проверяем интервал между спавнами
+    if current_time - last_stone_spawn < min_spawn_interval:
+        return
+        
+    # Проверяем количество камней на экране
+    if len(stones) >= MAX_STONES:
+        return
+        
+    # Рандомно определяем количество камней для спавна (1-3)
+    num_stones = random.randint(1, min(3, MAX_STONES - len(stones)))
+    
+    # Выбираем случайный размер для группы камней
+    stone_size = random.choice(STONE_SIZES)
+    
+    for _ in range(num_stones):
+        stones.append({
+            'x': WIDTH + (_ * 150),  # Располагаем камни с небольшим отступом друг от друга
+            'y': 400 + (100 - stone_size[1]),  # Корректируем Y в зависимости от размера
+            'speed': stone_speed,
+            'size': stone_size
+        })
+    
+    last_stone_spawn = current_time
+
+def spawn_mosquitos(current_time, elapsed_time):
+    """Спавн комаров"""
+    global last_mosquito_spawn
+    
+    if elapsed_time < 15:  # Changed from 10 to 15 seconds
+        return
+        
+    if current_time - last_mosquito_spawn < min_mosquito_spawn_interval:
+        return
+        
+    if len(mosquitos) >= MAX_MOSQUITOS:
+        return
+        
+    # Исправляем порядок аргументов: от меньшего к большему
+    mosquito_y = random.randint(MOSQUITO_Y_HIGH, MOSQUITO_Y_LOW)  # HIGH теперь первый аргумент, т.к. он меньше
+        
+    mosquitos.append({
+        'x': WIDTH,
+        'y': mosquito_y,
+        'speed': mosquito_speed
+    })
+    
+    last_mosquito_spawn = current_time
+
+def spawn_coins(current_time, elapsed_time):
+    """Спавн монет"""
+    global last_coin_spawn
+    
+    if elapsed_time < 11:  # Начинаем спавнить монеты после 11 секунд
+        return
+        
+    if current_time - last_coin_spawn < min_coin_spawn_interval:
+        return
+        
+    if len(coins) >= MAX_COINS:
+        return
+        
+    # Определяем количество монет для спавна (1-4)
+    num_coins = random.randint(1, 4)
+    
+    # Определяем уровень появления монет
+    if stones and random.random() < 0.3:  # 30% шанс появления на камне
+        stone = random.choice(stones)
+        coin_y = stone['y'] - 50  # Размещаем монету над камнем
+    else:
+        coin_y = random.choice(COIN_Y_LEVELS)  # Случайный уровень
+    
+    for i in range(num_coins):
+        coins.append({
+            'x': WIDTH + (i * 60),  # Располагаем монеты с отступом
+            'y': coin_y,
+            'speed': coin_speed
+        })
+    
+    last_coin_spawn = current_time
+
+def update_stones():
+    """Обновление позиций камней"""
+    global stones
+    stones = [stone for stone in stones if stone['x'] + stone['size'][0] >= 0]  # Удаляем камни, ушедшие за экран
+    
+    for stone in stones:
+        stone['x'] -= stone['speed']
+
+def update_mosquitos():
+    """Обновление позиций комаров"""
+    global mosquitos
+    mosquitos = [mosquito for mosquito in mosquitos if mosquito['x'] >= 0]  # Удаляем комаров, ушедшие за экран
+    
+    for mosquito in mosquitos:
+        mosquito['x'] -= mosquito['speed']
+
+def update_coins():
+    """Обновление позиций монет"""
+    global coins
+    coins = [coin for coin in coins if coin['x'] >= 0]  # Удаляем монеты, ушедшие за экран
+    
+    for coin in coins:
+        coin['x'] -= coin['speed']
+
 def main():
+    music_manager.stop_music()  # Останавливаем музыку меню
     global background_x, paused, score, last_score_update, player_frame, player_state
     global babirussa_frame, babirussa_x, is_jumping, jump_velocity, player_y
     global babirussa_y, babirussa_jump_velocity, babirussa_is_jumping
-    global stone_x, stone_spawned, player_x, on_platform, pause_start_time, total_pause_time
-    global is_crouching
+    global player_x, on_platform, pause_start_time, total_pause_time
+    global is_crouching, stones, last_stone_spawn, mosquitos, last_mosquito_spawn
+    global coins, last_coin_spawn
+    collected_coins = 0
 
     # Initialize images before the game loop
     player_image = player_run_images[0]
@@ -225,10 +392,12 @@ def main():
                     if event.key == pygame.K_LCTRL and not is_jumping:
                         player_state = "crouch"
                         is_crouching = True
+                        player_image = player_crouch_image  # Мгновенное обновление спрайта
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_LCTRL and is_crouching:
                     player_state = "run"
                     is_crouching = False
+                    player_image = player_run_images[player_frame]  # Мгновенное обновление спрайта
 
         if paused:
             draw_pause_menu()
@@ -242,28 +411,37 @@ def main():
         current_time = pygame.time.get_ticks()
         elapsed_time = (current_time - start_time - total_pause_time) // 1000
 
-        # Spawn stone after 10 seconds
-        if elapsed_time >= 10 and not stone_spawned:
-            stone_spawned = True
-            stone_x = WIDTH
+        # Спавн и обновление препятствий и монет
+        spawn_stones(current_time, elapsed_time)
+        spawn_mosquitos(current_time, elapsed_time)
+        spawn_coins(current_time, elapsed_time)
+        update_stones()
+        update_mosquitos()
+        update_coins()
 
-        # Move stone if spawned
-        if stone_spawned:
-            stone_x -= stone_speed
-            if stone_x + 100 < 0:  # When stone is completely off screen
-                stone_spawned = False
+        # Проверка столкновения с монетами
+        for coin in coins[:]:  # Используем копию списка для безопасного удаления
+            if check_coin_collision(player_x, player_y, coin['x'], coin['y']):
+                coins.remove(coin)
+                score += 500
+                collected_coins += 1
 
         # Управление прыжком и падением игрока
         if is_jumping or not on_platform:
             new_player_y = player_y + jump_velocity
             
             # Проверка приземления на платформу
-            if stone_spawned and check_platform_collision(player_x, new_player_y, stone_x, stone_y):
-                player_y = stone_y - (PLAYER_CROUCH_HEIGHT if is_crouching else PLAYER_NORMAL_HEIGHT)
-                is_jumping = False
-                on_platform = True
-                jump_velocity = 0
-            else:
+            on_any_platform = False
+            for stone in stones:
+                if check_platform_collision(player_x, new_player_y, stone['x'], stone['y'], stone['size']):
+                    player_y = stone['y'] - (PLAYER_CROUCH_HEIGHT if is_crouching else PLAYER_NORMAL_HEIGHT)
+                    is_jumping = False
+                    on_platform = True
+                    jump_velocity = 0
+                    on_any_platform = True
+                    break
+                    
+            if not on_any_platform:
                 player_y = new_player_y
                 jump_velocity += gravity
                 
@@ -277,19 +455,31 @@ def main():
 
         # Если игрок на платформе
         if on_platform:
-            # Проверяем, все еще ли игрок над платформой
-            if not (stone_x <= player_x + 100 and player_x <= stone_x + 100):
+            # Проверяем, все еще ли игрок над какой-либо платформой
+            still_on_platform = False
+            for stone in stones:
+                if stone['x'] <= player_x + 100 and player_x <= stone['x'] + stone['size'][0]:
+                    still_on_platform = True
+                    break
+            if not still_on_platform:
                 on_platform = False
                 is_jumping = True
                 jump_velocity = 0
 
         # Check if player hits stone while running
-        if check_collision(player_x, player_y, stone_x, stone_y):
-            if not is_jumping and not on_platform:
-                player_x -= stone_speed  # Push player with stone
+        for stone in stones:
+            if check_collision(player_x, player_y, stone['x'], stone['y'], stone['size']):
+                if not is_jumping and not on_platform:
+                    player_x -= stone['speed']  # Push player with stone
+
+        # Check if player hits mosquito
+        for mosquito in mosquitos:
+            if check_mosquito_collision(player_x, player_y, mosquito['x'], mosquito['y']):
+                if not is_crouching:  # Только если игрок не пригнулся
+                    player_x -= mosquito['speed']  # Push player with mosquito
 
         # Автоматический прыжок бабируссы
-        if not babirussa_is_jumping and stone_x - babirussa_x < 200:
+        if not babirussa_is_jumping and stones and stones[0]['x'] - babirussa_x < 200:
             babirussa_is_jumping = True
             babirussa_jump_velocity = -12
 
@@ -310,16 +500,14 @@ def main():
             score += 10
             last_score_update = current_time
 
-        # Slower animations
+        # Анимация только для бега
         animation_timer += 1
         if animation_timer >= 15:  # Increased delay between frames
-            # Анимация игрока
-            if player_state == "run" and not is_jumping:
+            # Анимация игрока только для бега
+            if player_state == "run" and not is_jumping and not is_crouching:
                 player_frame = (player_frame + 1) % len(player_run_images)
                 player_image = player_run_images[player_frame]
-            elif player_state == "crouch":
-                player_image = player_crouch_image
-            else:
+            elif is_jumping:
                 player_image = player_jump_image
 
             # Анимация бабируссы
@@ -327,6 +515,26 @@ def main():
             babirussa_image = babirussa_run_images[babirussa_frame]
             
             animation_timer = 0
+
+        # Проверка столкновения с бабируссой
+        player_rect = pygame.Rect(player_x, player_y, 
+                                PLAYER_NORMAL_WIDTH, 
+                                PLAYER_NORMAL_HEIGHT if not is_crouching else PLAYER_CROUCH_HEIGHT)
+        babirussa_rect = pygame.Rect(babirussa_x, babirussa_y, 150, 100)
+        
+        if player_rect.colliderect(babirussa_rect):
+            # Остановка игры и показ экрана окончания
+            result = game_over.show_game_over(score, collected_coins, elapsed_time)
+            if result == "menu":
+                try:
+                    pygame.quit()
+                    os.system('python menu.py')
+                    sys.exit()
+                except Exception as e:
+                    print(f"Error launching menu: {e}")
+            elif result == "quit":
+                pygame.quit()
+                sys.exit()
 
         # Отрисовка
         screen.blit(background_image, (background_x, 0))
@@ -340,7 +548,6 @@ def main():
         screen.blit(player_image, (player_x, player_y))
 
         # HUD
-        draw_text(f"Time: {elapsed_time}s", font, BLACK, WIDTH // 2 - 150, 20)
         draw_text(f"Score: {score}", font, BLACK, WIDTH // 2, 20)
 
         # Кнопка паузы

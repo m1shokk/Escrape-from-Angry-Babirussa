@@ -2,6 +2,7 @@ import pygame
 import os
 import sys
 import json
+from music_manager import music_manager
 
 # Инициализация Pygame
 pygame.init()
@@ -80,25 +81,31 @@ def draw_button(screen, rect, color, border_color, text, hover=False):
 
 # Запуск игры
 def start_game():
-    game_path = "game.py"
-    if os.path.exists(game_path):
-        os.system(f"python {game_path}")
-    else:
-        print("Файл game.py не найден!")
+    try:
+        from modes import main
+        main()
+    except ImportError:
+        print("Файл modes.py не найден!")
 
 # Открытие настроек
 def open_settings():
-    os.system("python settings.py")
-    # Перезагрузка настроек после возвращения
-    with open(settings_file, "r", encoding="utf-8") as file:
-        global settings
-        settings = json.load(file)
-    global menu_translations
-    menu_translations = load_menu_translations(settings["language"])
-    update_button_texts()
-    global title_text
-    title_text = font.render(menu_translations["title"], True, text_color)
+    try:
+        from settings import open_settings
+        open_settings()
+        # Перезагрузка настроек после возвращения
+        with open(settings_file, "r", encoding="utf-8") as file:
+            global settings
+            settings = json.load(file)
+        global menu_translations
+        menu_translations = load_menu_translations(settings["language"])
+        update_button_texts()
+        global title_text
+        title_text = font.render(menu_translations["title"], True, text_color)
+    except ImportError:
+        print("Settings module not found")
 
+# В начале main() или сразу после инициализации pygame:
+music_manager.play_menu_music()
 
 # Основной игровой цикл
 running = True
