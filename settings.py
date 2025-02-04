@@ -1,6 +1,7 @@
 import pygame
 import os
 import json
+from music_manager import music_manager
 
 # Инициализация Pygame
 pygame.init()
@@ -49,13 +50,8 @@ def get_translation(key):
 
 # Функция настроек
 def open_settings():
-    # Включение музыки
-    if os.path.exists(music_path):
-        pygame.mixer.music.load(music_path)
-        pygame.mixer.music.play(-1)  # Бесконечный повтор
-    else:
-        print("Музыка не найдена:", music_path)
-
+    music_manager.play_menu_music()
+    
     running = True
     selected_option = 0  # Индекс текущей настройки
     language_options = list(translations.keys())  # Доступные языки
@@ -66,20 +62,18 @@ def open_settings():
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.mixer.music.stop()
-                running = False
+                running = False  # Убрали остановку музыки здесь
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Левая кнопка мыши
                     mouse_pos = pygame.mouse.get_pos()
                     if back_button_rect.collidepoint(mouse_pos):
-                        # Сохранение настроек перед выходом
                         with open(settings_file, "w", encoding="utf-8") as file:
                             json.dump(settings, file, ensure_ascii=False, indent=4)
-                        running = False  # Выход из настроек
+                        running = False  # Убрали остановку музыки здесь
                 elif selected_option == 0:  # Переключение звука
                     settings["sound"] = not settings["sound"]
-                    pygame.mixer.music.set_volume(1 if settings["sound"] else 0)
+                    music_manager.toggle_music(settings["sound"])
                 elif selected_option == 1:  # Переключение языка
                     current_index = language_options.index(settings["language"])
                     settings["language"] = language_options[
@@ -94,7 +88,7 @@ def open_settings():
                 elif event.key == pygame.K_RETURN:  # Выбор опции
                     if selected_option == 0:  # Переключение звука
                         settings["sound"] = not settings["sound"]
-                        pygame.mixer.music.set_volume(1 if settings["sound"] else 0)
+                        music_manager.toggle_music(settings["sound"])
                     elif selected_option == 1:  # Переключение языка
                         current_index = language_options.index(settings["language"])
                         settings["language"] = language_options[
@@ -130,8 +124,6 @@ def open_settings():
 
         # Обновление экрана
         pygame.display.flip()
-
-    pygame.mixer.music.stop()
 
 # Тестирование вызова настроек
 if __name__ == "__main__":
