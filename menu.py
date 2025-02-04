@@ -7,6 +7,10 @@ from music_manager import music_manager
 # Инициализация Pygame
 pygame.init()
 
+# После инициализации pygame и перед созданием окна
+game_icon = pygame.image.load(os.path.join("assets", "logo", "game_logo.jpg"))
+pygame.display.set_icon(game_icon)
+
 # Настройка окна
 screen = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("Escape from AB")

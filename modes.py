@@ -37,6 +37,9 @@ highway_image = pygame.transform.scale(highway_image, (300, 150))
 # Кнопка локации
 location_button = pygame.Rect(WIDTH//2 - 150, HEIGHT//2 - 100, 300, 150)
 
+# Кнопка возврата в меню (одна, по центру внизу)
+menu_button = pygame.Rect(WIDTH//2 - 100, HEIGHT - 60, 200, 40)  # Увеличили ширину и опустили ниже
+
 # Слайдер сложности
 slider_width = 300
 slider_height = 10
@@ -71,6 +74,18 @@ def draw_location_button():
     text_rect = text.get_rect(center=location_button.center)
     screen.blit(text, text_rect)
 
+def draw_menu_button():
+    """Отрисовка кнопки возврата в главное меню"""
+    mouse_pos = pygame.mouse.get_pos()
+    color = LIGHT_GRAY if menu_button.collidepoint(mouse_pos) else GRAY
+    
+    pygame.draw.rect(screen, color, menu_button, border_radius=5)
+    pygame.draw.rect(screen, BLACK, menu_button, 2, border_radius=5)
+    
+    text = font_medium.render("Back to Menu", True, BLACK)
+    text_rect = text.get_rect(center=menu_button.center)
+    screen.blit(text, text_rect)
+
 def draw_difficulty_slider():
     """Отрисовка слайдера сложности"""
     # Линия слайдера
@@ -99,8 +114,9 @@ def get_difficulty_from_position(x):
         return "Hard"
 
 def return_to_menu():
-    pygame.quit()
-    os.execv(sys.executable, ['python'] + ['menu.py'])
+    """Возврат в главное меню без остановки музыки"""
+    import menu
+    menu.main()
 
 def main():
     music_manager.play_menu_music()  # Продолжаем воспроизведение музыки
@@ -110,14 +126,19 @@ def main():
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return_to_menu()
+                pygame.quit()
+                sys.exit()
                 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
+                    # Проверка клика на кнопку меню
+                    if menu_button.collidepoint(event.pos):
+                        return_to_menu()
+                        return
+                        
                     # Проверка клика на кнопку локации
                     if location_button.collidepoint(event.pos):
                         try:
-                            music_manager.stop_music()  # Останавливаем музыку перед запуском игры
                             # Перезагрузка модуля game
                             if 'game' in sys.modules:
                                 importlib.reload(sys.modules['game'])
@@ -162,6 +183,9 @@ def main():
         diff_text = font_medium.render(f"Selected difficulty: {current_difficulty}", True, BLACK)
         diff_rect = diff_text.get_rect(center=(WIDTH//2, slider_y + 50))
         screen.blit(diff_text, diff_rect)
+        
+        # Кнопка меню в самом низу
+        draw_menu_button()
         
         pygame.display.flip()
 
