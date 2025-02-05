@@ -2,9 +2,10 @@ import pygame
 import os
 import sys
 import random
+import json
 from settings import open_settings
 from music_manager import music_manager
-from game_over import game_over
+import game_over
 
 # Инициализация Pygame
 pygame.init()
@@ -565,6 +566,48 @@ def update_jetpack():
     if jetpack_active and pygame.time.get_ticks() - jetpack_start_time > jetpack_duration:
         jetpack_active = False
 
+def init_game():
+    """Инициализация игры"""
+    global running, player_x, player_y, score, collected_coins, start_time, current_map, background_image
+    
+    # Инициализация переменных
+    running = True
+    player_x = WIDTH // 4
+    player_y = HEIGHT // 2
+    score = 0
+    collected_coins = 0
+    start_time = pygame.time.get_ticks()
+    
+    # Загрузка настроек карты и соответствующего фона
+    try:
+        with open("temp_game_settings.json", "r") as f:
+            settings = json.load(f)
+            current_map = settings.get("map", "highway")
+            
+            # Загружаем соответствующий фон
+            if current_map == "forest":
+                background_path = os.path.join("assets", "bg_game", "forest.jpg")
+            else:  # highway
+                background_path = os.path.join("assets", "bg_game", "Bg_1.jpg")
+                
+            background_image = pygame.image.load(background_path)
+            background_image = pygame.transform.scale(background_image, (WIDTH, HEIGHT))
+            
+    except Exception as e:
+        print(f"Error loading map settings or background: {e}")
+        current_map = "highway"
+        # Загружаем фон по умолчанию
+        background_path = os.path.join("assets", "bg_game", "Bg_1.jpg")
+        background_image = pygame.image.load(background_path)
+        background_image = pygame.transform.scale(background_image, (WIDTH, HEIGHT))
+    
+    # Запуск музыки
+    try:
+        music_manager.stop_music()
+        music_manager.play_menu_music()
+    except Exception as e:
+        print(f"Error playing music: {e}")
+
 def main():
     music_manager.stop_music()  # Останавливаем музыку меню
     global background_x, paused, score, last_score_update, player_frame, player_state
@@ -788,7 +831,7 @@ def main():
         
         if player_rect.colliderect(babirussa_rect):
             # Остановка игры и показ экрана окончания
-            result = game_over.show_game_over(score, collected_coins, elapsed_time)
+            result = game_over.show_game_over_screen(score, elapsed_time, collected_coins)
             if result == "menu":
                 try:
                     pygame.quit()
@@ -830,4 +873,5 @@ def main():
         clock.tick(FPS)
 
 if __name__ == "__main__":
+    init_game()
     main()

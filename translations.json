@@ -3,12 +3,14 @@
         "title": "Настройки",
         "sound": "Звук",
         "language": "Язык",
+        "records": "Рекорды",
         "back": "Назад"
     },
     "English": {
         "title": "Settings",
         "sound": "Sound",
         "language": "Language",
+        "records": "Records",
         "back": "Back"
     },
     "Français": {
